@@ -14,11 +14,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: "Debug: List repo files"
-      run: ls -la
-
-    - name: Show all files in workspace
       run: find . -type f
-
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -28,12 +24,10 @@ jobs:
     - name: Install dependencies
       run: pip install requests
 
-    - name: Run the merge script (absolute path)
+    - name: Run the merge script
       run: |
-        echo "Current dir: $PWD"
-        find . -name merge_epg.py
-        python ./merge_epg.py
-    
+        python merge_epg.py
+      working-directory: ${{ github.workspace }}
 
     - name: Commit and push changes
       run: |
