@@ -1,41 +1,38 @@
 #!/usr/bin/env python3
-"""Compare your IPTV playlist against the unified EPG and list any channels
-that are missing guide data.
-
-Credentials (USERNAME, PASSWORD) are supplied at runtime through
-GitHub‑Actions environment variables that map to repo secrets.
 """
+Compare the playlist from the provider against unified_epg.xml
+and list any tvg-ids that have no guide data.
+"""
+
+from __future__ import annotations
 
 import os
 import re
 import sys
 import xml.etree.ElementTree as ET
-from pathlib import Path
+from typing import Set
 
-import requests  # type: ignore
+import requests
 
-###############################################################################
-# 1. Load unified EPG and collect its channel IDs
-###############################################################################
-
-epg_file = Path("unified_epg.xml")
-
-if not epg_file.exists():
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. Load the merged EPG and collect its channel IDs
+# ──────────────────────────────────────────────────────────────────────────────
+try:
+    unified_root = ET.parse("unified_epg.xml").getroot()
+except FileNotFoundError:
     print("unified_epg.xml not found. Run merge_epg.py first.", file=sys.stderr)
     sys.exit(1)
 
-unified_root = ET.parse(epg_file).getroot()
-unified_ids = {ch.get("id") for ch in unified_root.findall("channel")}
+unified_ids: Set[str] = {c.get("id") for c in unified_root.findall("channel") if c.get("id")}
 
-###############################################################################
-# 2. Fetch your playlist M3U (credentials come from GitHub Secrets)
-###############################################################################
-
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. Pull USERNAME/PASSWORD from environment (set in the workflow)
+# ──────────────────────────────────────────────────────────────────────────────
 username = os.getenv("USERNAME")
 password = os.getenv("PASSWORD")
 
 if not username or not password:
-    print("ERROR: USERNAME or PASSWORD env vars are not set.", file=sys.stderr)
+    print("ERROR: USERNAME or PASSWORD env-vars were not provided.", file=sys.stderr)
     sys.exit(1)
 
 m3u_url = (
@@ -43,30 +40,31 @@ m3u_url = (
     f"xmltv.php?username={username}&password={password}"
 )
 
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. Download the playlist
+# ──────────────────────────────────────────────────────────────────────────────
 try:
-    resp = requests.get(m3u_url, timeout=30)
+    resp = requests.get(
+        m3u_url,
+        timeout=60,
+        headers={"User-Agent": "VLC/3.0"},  # many IPTV portals expect this
+    )
     resp.raise_for_status()
-except requests.RequestException as err:
-    print(f"Failed to fetch playlist: {err}", file=sys.stderr)
+except requests.RequestException as exc:
+    print(f"Failed to fetch playlist: {exc}", file=sys.stderr)
     sys.exit(1)
 
 playlist_text = resp.text
 
-###############################################################################
-# 3. Extract all tvg‑id values via regex
-###############################################################################
-
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. Extract `tvg-id`s and report any that are missing from the EPG
+# ──────────────────────────────────────────────────────────────────────────────
 playlist_ids = set(re.findall(r'tvg-id="([^"]+)"', playlist_text))
-
-###############################################################################
-# 4. Compute & report missing IDs
-###############################################################################
-
 missing = sorted(playlist_ids - unified_ids)
 
 if not missing:
-    print("All playlist channels have EPG data.")
+    print("✅ All playlist channels have EPG data.")
 else:
-    print(f"{len(missing)} channels missing EPG:")
+    print(f"⚠️ {len(missing)} channel(s) missing EPG:")
     for cid in missing:
-        print("  -", cid)
+        print("  •", cid)
