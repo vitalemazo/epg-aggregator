@@ -24,9 +24,12 @@ jobs:
     - name: Install dependencies
       run: pip install requests
 
-    - name: Run the merge script
-      run: python merge_epg.py
-      working-directory: ${{ github.workspace }}
+    - name: Run the merge script (absolute path)
+      run: |
+        echo "Current dir: $PWD"
+        find . -name merge_epg.py
+        python ./merge_epg.py
+    
 
     - name: Commit and push changes
       run: |
