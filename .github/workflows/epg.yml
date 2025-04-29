@@ -2,7 +2,7 @@ name: Update Unified EPG
 
 on:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 2 * * *"  # every day at 2 AM UTC
   workflow_dispatch:
 
 jobs:
@@ -10,13 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clean workspace
-      run: rm -rf ./*
-
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0
+        path: .
 
     - name: "Debug: List repo files"
       run: ls -la
