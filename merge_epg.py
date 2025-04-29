@@ -24,18 +24,19 @@ for idx, url in enumerate(urls):
 
     print(f"Downloading {url}...")
     r = requests.get(url, timeout=30)
+    r.raise_for_status()
     with open(gz_filename, 'wb') as f:
         f.write(r.content)
 
     # Decompress
-    with gzip.open(gz_filename, 'rb') as f_in:
-        with open(xml_filename, 'wb') as f_out:
-            shutil.copyfileobj(f_in, f_out)
+    with gzip.open(gz_filename, 'rb') as f_in, open(xml_filename, 'wb') as f_out:
+        shutil.copyfileobj(f_in, f_out)
 
     xml_files.append(xml_filename)
 
 # Merge
-merged_root = ET.Element('tv')
+# Create <tv> root with generator-info-name
+merged_root = ET.Element('tv', {'generator-info-name': 'Unified EPG'})
 
 for xml_file in xml_files:
     tree = ET.parse(xml_file)
@@ -44,12 +45,20 @@ for xml_file in xml_files:
     for child in root:
         merged_root.append(child)
 
-# Save merged file
-tree = ET.ElementTree(merged_root)
-tree.write('unified_epg.xml', encoding='utf-8', xml_declaration=True)
+# Prepare final XML string
+final_xml = ET.tostring(merged_root, encoding='utf-8').decode('utf-8')
+
+# Write out with declaration and DOCTYPE
+with open('unified_epg.xml', 'w', encoding='utf-8') as f:
+    f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+    f.write('<!DOCTYPE tv SYSTEM "xmltv.dtd">\n')
+    f.write(final_xml)
 
 print("Unified EPG created: unified_epg.xml")
 
-# Clean up
-for file in xml_files + [f.replace('.xml', '.xml.gz') for f in xml_files]:
-    os.remove(file)
+# Clean up temp files
+for f in xml_files + [fn.replace('.xml', '.xml.gz') for fn in xml_files]:
+    try:
+        os.remove(f)
+    except OSError:
+        pass
