@@ -39,7 +39,7 @@ jobs:
 
       - name: Check for missing EPG entries
         run: |
-          echo "🔍 Checking playlist vs unified EPG…"
+          echo "Checking playlist vs unified EPG…"
           python find_missing_epg.py
         working-directory: ${{ github.workspace }}
 
