@@ -1,4 +1,4 @@
-import requests
+import requests # type: ignore
 import gzip
 import shutil
 import os
