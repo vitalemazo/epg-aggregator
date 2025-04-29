@@ -16,6 +16,10 @@ jobs:
     - name: "Debug: List repo files"
       run: ls -la
 
+    - name: Show all files in workspace
+      run: find . -type f
+
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
