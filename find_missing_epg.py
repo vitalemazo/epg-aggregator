@@ -63,8 +63,8 @@ playlist_ids = set(re.findall(r'tvg-id="([^"]+)"', playlist_text))
 missing = sorted(playlist_ids - unified_ids)
 
 if not missing:
-    print("✅ All playlist channels have EPG data.")
+    print("All playlist channels have EPG data.")
 else:
-    print(f"⚠️ {len(missing)} channel(s) missing EPG:")
+    print(f"{len(missing)} channel(s) missing EPG:")
     for cid in missing:
         print("  •", cid)
