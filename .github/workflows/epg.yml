@@ -2,15 +2,15 @@ name: Update Unified EPG
 
 on:
   schedule:
-    - cron: "0 2 * * *"  # every day at 2AM UTC
-  workflow_dispatch:    # allowsmanual triggerr :-)
+    - cron: "0 2 * * *"  # every day at 2 AM UTC
+  workflow_dispatch:     
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repo
+    - name: Checkout repository
       uses: actions/checkout@v4
 
     - name: Set up Python
@@ -18,16 +18,16 @@ jobs:
       with:
         python-version: '3.x'
 
-    - name: Install Requests
+    - name: Install dependencies
       run: pip install requests
 
     - name: Run the merge script
       run: python merge_epg.py
 
-    - name: Commit and Push changes
+    - name: Commit and push changes
       run: |
         git config --global user.name 'github-actions[bot]'
         git config --global user.email 'github-actions[bot]@users.noreply.github.com'
         git add unified_epg.xml
-        git commit -m "Update unified EPG file"
+        git commit -m "Update unified EPG file" || echo "No changes to commit"
         git push
