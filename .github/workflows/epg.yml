@@ -1,8 +1,11 @@
 name: Update Unified EPG
 
+permissions:
+  contents: write
+
 on:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 2 * * *"       # every day at 2 AM UTC
   workflow_dispatch:
 
 jobs:
@@ -12,8 +15,11 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        persist-credentials: true
+        fetch-depth: 0
 
-    - name: "Debug: List repo files"
+    - name: "Debug: list files"
       run: find . -type f
 
     - name: Set up Python
@@ -25,8 +31,7 @@ jobs:
       run: pip install requests
 
     - name: Run the merge script
-      run: |
-        python merge_epg.py
+      run: python merge_epg.py
       working-directory: ${{ github.workspace }}
 
     - name: Commit and push changes
