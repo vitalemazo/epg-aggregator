@@ -1,70 +1,65 @@
 #!/usr/bin/env python3
 """
-Compare the playlist from the provider against unified_epg.xml
-and list any tvg-ids that have no guide data.
+List any playlist channels whose tvg-id either
+  • is absent from unified_epg.xml, or
+  • has no programme entries in the next 7 days.
 """
 
 from __future__ import annotations
+import os, re, sys, datetime as dt, xml.etree.ElementTree as ET, requests
 
-import os
-import re
-import sys
-import xml.etree.ElementTree as ET
-from typing import Set
-
-import requests
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 1. Load the merged EPG and collect its channel IDs
-# ──────────────────────────────────────────────────────────────────────────────
+# ── 1.  Load unified EPG ─────────────────────────────────────────────────────
 try:
-    unified_root = ET.parse("unified_epg.xml").getroot()
+    tree = ET.parse("unified_epg.xml")
 except FileNotFoundError:
-    print("unified_epg.xml not found. Run merge_epg.py first.", file=sys.stderr)
-    sys.exit(1)
+    sys.exit("unified_epg.xml not found – run merge_epg.py first.")
 
-unified_ids: Set[str] = {c.get("id") for c in unified_root.findall("channel") if c.get("id")}
+root = tree.getroot()
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 2. Pull USERNAME/PASSWORD from environment (set in the workflow)
-# ──────────────────────────────────────────────────────────────────────────────
-username = os.getenv("USERNAME")
-password = os.getenv("PASSWORD")
+# Map channel-id → list of <programme start=…>
+programmes: dict[str, list[str]] = {}
+for p in root.findall("programme"):
+    cid = p.get("channel")
+    if cid:
+        programmes.setdefault(cid, []).append(p.get("start", "")[:14])  # yyyymmddHHMMSS tz
 
-if not username or not password:
-    print("ERROR: USERNAME or PASSWORD env-vars were not provided.", file=sys.stderr)
-    sys.exit(1)
+# ── 2.  Get the playlist ------------------------------------------------------
+user, pw = os.getenv("USERNAME"), os.getenv("PASSWORD")
+if not user or not pw:
+    sys.exit("USERNAME / PASSWORD env-vars are missing.")
 
-m3u_url = (
-    "http://boom38586.cdngold.me/"
-    f"xmltv.php?username={username}&password={password}"
-)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 3. Download the playlist
-# ──────────────────────────────────────────────────────────────────────────────
+url = f"http://boom38586.cdngold.me/xmltv.php?username={user}&password={pw}"
 try:
-    resp = requests.get(
-        m3u_url,
-        timeout=60,
-        headers={"User-Agent": "VLC/3.0"},  # many IPTV portals expect this
-    )
+    resp = requests.get(url, timeout=60, headers={"User-Agent": "VLC/3.0"})
     resp.raise_for_status()
-except requests.RequestException as exc:
-    print(f"Failed to fetch playlist: {exc}", file=sys.stderr)
-    sys.exit(1)
+except requests.RequestException as e:
+    sys.exit(f"Failed to fetch playlist: {e}")
 
-playlist_text = resp.text
+ids_in_playlist = set(re.findall(r'tvg-id="([^"]+)"', resp.text))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 4. Extract `tvg-id`s and report any that are missing from the EPG
-# ──────────────────────────────────────────────────────────────────────────────
-playlist_ids = set(re.findall(r'tvg-id="([^"]+)"', playlist_text))
-missing = sorted(playlist_ids - unified_ids)
+# ── 3.  Check each id for upcoming shows -------------------------------------
+now = dt.datetime.utcnow()
+limit = now + dt.timedelta(days=7)
 
-if not missing:
-    print("All playlist channels have EPG data.")
-else:
-    print(f"{len(missing)} channel(s) missing EPG:")
+def has_future_show(ch_id: str) -> bool:
+    for start in programmes.get(ch_id, []):
+        try:
+            start_dt = dt.datetime.strptime(start, "%Y%m%d%H%M%S")
+        except ValueError:
+            continue
+        if now <= start_dt <= limit:
+            return True
+    return False
+
+missing = [
+    cid for cid in sorted(ids_in_playlist)
+    if cid not in programmes or not has_future_show(cid)
+]
+
+# ── 4.  Report ----------------------------------------------------------------
+if missing:
+    print(f"{len(missing)} channel(s) missing useful EPG:")
     for cid in missing:
         print("  •", cid)
+else:
+    print("Every playlist channel has at least one programme in the next 7 days.")
