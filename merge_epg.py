@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 import os
 import re
-import requests  # type: ignore
+import requests
 import gzip
 import shutil
 from xml.etree import ElementTree as ET
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuration: EPG chunks and M3U URL from secrets
+# Configuration: EPG chunks and optional M3U URL from secrets
 # ──────────────────────────────────────────────────────────────────────────────
 EPG_URLS = [
     "https://www.open-epg.com/files/unitedstates1.xml.gz",
@@ -20,31 +20,34 @@ EPG_URLS = [
     "https://www.open-epg.com/files/unitedstates8.xml.gz",
 ]
 
-# Read IPTV credentials from environment (set via GitHub Secrets)
+# Try to build the M3U URL from GitHub Secrets
 USER = os.getenv("USERNAME")
 PASSWORD = os.getenv("PASSWORD")
-if not USER or not PASSWORD:
-    raise RuntimeError("Environment variables USERNAME and PASSWORD must be set")
-
-M3U_URL = f"http://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
+if USER and PASSWORD:
+    M3U_URL = f"http://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
+    try:
+        print(f"Fetching playlist from {M3U_URL}...")
+        resp = requests.get(M3U_URL, timeout=30)
+        resp.raise_for_status()
+        aliases = {}
+        for line in resp.text.splitlines():
+            if line.startswith("#EXTINF"):
+                id_match = re.search(r'tvg-id="([^"]+)"', line)
+                name_match = re.search(r'tvg-name="([^"]+)"', line)
+                if id_match:
+                    vid = id_match.group(1).strip()
+                    vname = name_match.group(1).strip() if name_match else line.split(",", 1)[1].strip()
+                    aliases[vid] = vname
+        print(f"Found {len(aliases)} playlist entries")
+    except Exception as e:
+        print(f"Warning: failed to fetch playlist ({e}), skipping alias injection")
+        aliases = {}
+else:
+    print("USERNAME/PASSWORD not set, skipping alias injection")
+    aliases = {}
 
 def main():
-    # Step 1: Fetch and parse M3U playlist
-    print(f"Fetching playlist from {M3U_URL}...")
-    resp = requests.get(M3U_URL, timeout=30)
-    resp.raise_for_status()
-    aliases = {}
-    for line in resp.text.splitlines():
-        if line.startswith("#EXTINF"):
-            m_id = re.search(r'tvg-id="([^"]+)"', line)
-            m_name = re.search(r'tvg-name="([^"]+)"', line)
-            if m_id:
-                vid = m_id.group(1).strip()
-                vname = m_name.group(1).strip() if m_name else line.split(",", 1)[1].strip()
-                aliases[vid] = vname
-    print(f"Found {len(aliases)} playlist entries")
-
-    # Step 2: Download and decompress EPG chunks
+    # Step 1: Download and decompress EPG chunks
     xml_files = []
     for idx, url in enumerate(EPG_URLS):
         gz_fn = f"chunk{idx}.xml.gz"
@@ -57,15 +60,15 @@ def main():
         with gzip.open(gz_fn, "rb") as fi, open(xml_fn, "wb") as fo:
             shutil.copyfileobj(fi, fo)
         xml_files.append(xml_fn)
-
-    # Step 3: Merge into a single <tv> root
+    
+    # Step 2: Merge into a single <tv> root
     tv = ET.Element("tv", {"generator-info-name": "Unified EPG"})
     for xml_fn in xml_files:
         tree = ET.parse(xml_fn)
         for elem in tree.getroot():
             tv.append(elem)
-
-    # Step 4: Inject missing channels based on playlist
+    
+    # Step 3: Inject missing channels based on playlist aliases
     existing = {ch.get("id") for ch in tv.findall("channel")}
     added = 0
     for vid, vname in aliases.items():
@@ -75,17 +78,17 @@ def main():
             dn.text = vname
             added += 1
     print(f"Added {added} missing channel aliases")
-
-    # Step 5: Write out unified_epg.xml with DOCTYPE
+    
+    # Step 4: Write out unified_epg.xml with DOCTYPE
     out = "unified_epg.xml"
     with open(out, "w", encoding="utf-8") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
         f.write('<!DOCTYPE tv SYSTEM "xmltv.dtd">\n')
         f.write(ET.tostring(tv, encoding="unicode"))
     print("Unified EPG created:", out)
-
-    # Cleanup
-    for fn in xml_files + [f.replace(".xml", ".xml.gz") for f in xml_files]:
+    
+    # Step 5: Cleanup
+    for fn in xml_files + [fn.replace(".xml", ".xml.gz") for fn in xml_files]:
         try:
             os.remove(fn)
         except OSError:
