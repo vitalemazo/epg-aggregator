@@ -17,9 +17,9 @@ EPG_URLS = [
     "https://www.open-epg.com/files/unitedstates5.xml.gz",
     "https://www.open-epg.com/files/unitedstates6.xml.gz",
     "https://www.open-epg.com/files/unitedstates7.xml.gz",
-    "https://www.open-epg.com/generate/E5rVFNmdxZ.xml.gz",
+    # "https://www.open-epg.com/generate/E5rVFNmdxZ.xml.gz",
     "https://www.open-epg.com/files/unitedstates8.xml.gz",
-    "https://epgshare01.online/epgshare01/epg_ripper_ALL_SOURCES1.xml.gz",
+    # "https://epgshare01.online/epgshare01/epg_ripper_ALL_SOURCES1.xml.gz",
 ]
 
 # Try to build the M3U URL from GitHub Secrets
