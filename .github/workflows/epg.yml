@@ -22,6 +22,11 @@ jobs:
           persist-credentials: true
           fetch-depth: 0
 
+      - name: Debug fetch
+        run: |
+           echo "→ trying curl…"
+            curl -v "https://boom38586.cdngold.me/xmltv.php?username=${{ secrets.USERNAME }}&password=${{ secrets.PASSWORD }}"
+
       - name: "Debug: list files"
         run: find . -type f
 
