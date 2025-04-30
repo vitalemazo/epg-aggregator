@@ -1,11 +1,15 @@
-import requests # type: ignore
+#!/usr/bin/env python3
+import os
+import re
+import requests  # type: ignore
 import gzip
 import shutil
-import os
 from xml.etree import ElementTree as ET
 
-# URLs to download
-urls = [
+# ──────────────────────────────────────────────────────────────────────────────
+# Configuration: EPG chunks and M3U URL from secrets
+# ──────────────────────────────────────────────────────────────────────────────
+EPG_URLS = [
     "https://www.open-epg.com/files/unitedstates1.xml.gz",
     "https://www.open-epg.com/files/unitedstates2.xml.gz",
     "https://www.open-epg.com/files/unitedstates3.xml.gz",
@@ -16,49 +20,76 @@ urls = [
     "https://www.open-epg.com/files/unitedstates8.xml.gz",
 ]
 
-# Download and decompress
-xml_files = []
-for idx, url in enumerate(urls):
-    gz_filename = f"file{idx}.xml.gz"
-    xml_filename = f"file{idx}.xml"
+# Read IPTV credentials from environment (set via GitHub Secrets)
+USER = os.getenv("USERNAME")
+PASSWORD = os.getenv("PASSWORD")
+if not USER or not PASSWORD:
+    raise RuntimeError("Environment variables USERNAME and PASSWORD must be set")
 
-    print(f"Downloading {url}...")
-    r = requests.get(url, timeout=30)
-    r.raise_for_status()
-    with open(gz_filename, 'wb') as f:
-        f.write(r.content)
+M3U_URL = f"http://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
 
-    # Decompress
-    with gzip.open(gz_filename, 'rb') as f_in, open(xml_filename, 'wb') as f_out:
-        shutil.copyfileobj(f_in, f_out)
+def main():
+    # Step 1: Fetch and parse M3U playlist
+    print(f"Fetching playlist from {M3U_URL}...")
+    resp = requests.get(M3U_URL, timeout=30)
+    resp.raise_for_status()
+    aliases = {}
+    for line in resp.text.splitlines():
+        if line.startswith("#EXTINF"):
+            m_id = re.search(r'tvg-id="([^"]+)"', line)
+            m_name = re.search(r'tvg-name="([^"]+)"', line)
+            if m_id:
+                vid = m_id.group(1).strip()
+                vname = m_name.group(1).strip() if m_name else line.split(",", 1)[1].strip()
+                aliases[vid] = vname
+    print(f"Found {len(aliases)} playlist entries")
 
-    xml_files.append(xml_filename)
+    # Step 2: Download and decompress EPG chunks
+    xml_files = []
+    for idx, url in enumerate(EPG_URLS):
+        gz_fn = f"chunk{idx}.xml.gz"
+        xml_fn = f"chunk{idx}.xml"
+        print(f"Downloading {url}...")
+        r = requests.get(url, timeout=30)
+        r.raise_for_status()
+        with open(gz_fn, "wb") as f:
+            f.write(r.content)
+        with gzip.open(gz_fn, "rb") as fi, open(xml_fn, "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+        xml_files.append(xml_fn)
 
-# Merge
-# Create <tv> root with generator-info-name
-merged_root = ET.Element('tv', {'generator-info-name': 'Unified EPG'})
+    # Step 3: Merge into a single <tv> root
+    tv = ET.Element("tv", {"generator-info-name": "Unified EPG"})
+    for xml_fn in xml_files:
+        tree = ET.parse(xml_fn)
+        for elem in tree.getroot():
+            tv.append(elem)
 
-for xml_file in xml_files:
-    tree = ET.parse(xml_file)
-    root = tree.getroot()
+    # Step 4: Inject missing channels based on playlist
+    existing = {ch.get("id") for ch in tv.findall("channel")}
+    added = 0
+    for vid, vname in aliases.items():
+        if vid not in existing:
+            ch = ET.SubElement(tv, "channel", {"id": vid})
+            dn = ET.SubElement(ch, "display-name")
+            dn.text = vname
+            added += 1
+    print(f"Added {added} missing channel aliases")
 
-    for child in root:
-        merged_root.append(child)
+    # Step 5: Write out unified_epg.xml with DOCTYPE
+    out = "unified_epg.xml"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        f.write('<!DOCTYPE tv SYSTEM "xmltv.dtd">\n')
+        f.write(ET.tostring(tv, encoding="unicode"))
+    print("Unified EPG created:", out)
 
-# Prepare final XML string
-final_xml = ET.tostring(merged_root, encoding='utf-8').decode('utf-8')
+    # Cleanup
+    for fn in xml_files + [f.replace(".xml", ".xml.gz") for f in xml_files]:
+        try:
+            os.remove(fn)
+        except OSError:
+            pass
 
-# Write out with declaration and DOCTYPE
-with open('unified_epg.xml', 'w', encoding='utf-8') as f:
-    f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-    f.write('<!DOCTYPE tv SYSTEM "xmltv.dtd">\n')
-    f.write(final_xml)
-
-print("Unified EPG created: unified_epg.xml")
-
-# Clean up temp files
-for f in xml_files + [fn.replace('.xml', '.xml.gz') for fn in xml_files]:
-    try:
-        os.remove(f)
-    except OSError:
-        pass
+if __name__ == "__main__":
+    main()
