@@ -24,10 +24,11 @@ EPG_URLS = [
 USER = os.getenv("USERNAME")
 PASSWORD = os.getenv("PASSWORD")
 if USER and PASSWORD:
+     # the server only serves on HTTP (port 80), HTTPS will always reset
     M3U_URL = f"http://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
     try:
-        print(f"Fetching playlist from {M3U_URL}...")
-        resp = requests.get(M3U_URL, timeout=30)
+        print(f"Fetching playlist from {M3U_URL}…")
+        resp = requests.get(M3U_URL, timeout=30, headers={"User-Agent": "VLC/3.0"})
         resp.raise_for_status()
         aliases = {}
         for line in resp.text.splitlines():
