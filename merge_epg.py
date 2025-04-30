@@ -24,7 +24,7 @@ EPG_URLS = [
 USER = os.getenv("USERNAME")
 PASSWORD = os.getenv("PASSWORD")
 if USER and PASSWORD:
-    M3U_URL = f"https://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
+    M3U_URL = f"http://boom38586.cdngold.me/xmltv.php?username={USER}&password={PASSWORD}"
     try:
         print(f"Fetching playlist from {M3U_URL}...")
         resp = requests.get(M3U_URL, timeout=30)
