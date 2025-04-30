@@ -25,7 +25,8 @@ jobs:
       - name: Debug fetch
         run: |
            echo "→ trying curl…"
-            curl -v "https://boom38586.cdngold.me/xmltv.php?username=${{ secrets.USERNAME }}&password=${{ secrets.PASSWORD }}"
+            curl -v "http://boom38586.cdngold.me/xmltv.php?username=${{ secrets.USERNAME }}&password=${{ secrets.PASSWORD }}"
+
 
       - name: "Debug: list files"
         run: find . -type f
